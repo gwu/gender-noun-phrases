@@ -23,7 +23,7 @@ import nltk
 nltk.download('punkt')
 
 
-def create_context_key(context_size, tokens, index):
+def create_context_key(phrase_size, context_size, tokens, index):
   context_list = []
   startIndex = index - context_size
   for i in range(context_size):
@@ -33,27 +33,29 @@ def create_context_key(context_size, tokens, index):
       context_list.append('###')
   context_list.append('___')
   for i in range(context_size):
-    if index + i + 1 < len(tokens):
-      context_list.append(tokens[index + i + 1])
+    suffix_index = index + i + phrase_size
+    if suffix_index < len(tokens):
+      context_list.append(tokens[suffix_index])
     else:
       context_list.append('###')
   return ' '.join(context_list)
 
 
-def get_word_contexts(text, context_size):
+def get_word_contexts(text, phrase_size, context_size):
   tokens = nltk.word_tokenize(text)
-  for i, token in enumerate(tokens):
-    context_key = create_context_key(context_size, tokens, i)
-    yield token, context_key
+  for i in range(len(tokens) - phrase_size + 1):
+    context_key = create_context_key(phrase_size, context_size, tokens, i)
+    yield ' '.join(tokens[i:i + phrase_size]), context_key
 
 
 class PhraseGrouper:
-  def __init__(self, context_size=1):
+  def __init__(self, phrase_size, context_size):
     self.contexts = {}
+    self.phrase_size = phrase_size
     self.context_size = context_size
 
   def add(self, text):
-    word_contexts = get_word_contexts(text, self.context_size)
+    word_contexts = get_word_contexts(text, self.phrase_size, self.context_size)
     for word_context in word_contexts:
       word, context = word_context
       words = context in self.contexts and self.contexts[context] or []
@@ -114,6 +116,12 @@ def parse_command_line_args():
     default=3,
     help='number of words before and after each word to use as context'
   )
+  parser.add_argument(
+    '--phrase-size',
+    type=int,
+    default=1,
+    help='max number of words in a phrase'
+  )
   return parser.parse_args()
 
 
@@ -122,7 +130,7 @@ def main():
   args = parse_command_line_args()
 
   dialogs = parse_dialogs_file(args.dialogs)
-  phrase_grouper = PhraseGrouper(args.context_size)
+  phrase_grouper = PhraseGrouper(args.phrase_size, args.context_size)
   for dialog in dialogs:
     for line in dialog:
       gender, text = line
