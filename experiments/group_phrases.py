@@ -51,16 +51,23 @@ def get_word_contexts(text, phrase_size, context_size):
 class PhraseGrouper:
   def __init__(self, phrase_size, context_size):
     self.contexts = {}
+    self.phrase_frequencies = {}
     self.phrase_size = phrase_size
     self.context_size = context_size
 
+  def _count_phrase(self, phrase):
+    previous_count = phrase in self.phrase_frequencies and self.phrase_frequencies[phrase] or 0
+    self.phrase_frequencies[phrase] = previous_count + 1
+
   def add(self, text):
-    word_contexts = get_word_contexts(text, self.phrase_size, self.context_size)
-    for word_context in word_contexts:
-      word, context = word_context
-      words = context in self.contexts and self.contexts[context] or []
-      words.append(word)
-      self.contexts[context] = words
+    for phrase_size in range(1, self.phrase_size + 1):
+      word_contexts = get_word_contexts(text, phrase_size, self.context_size)
+      for word_context in word_contexts:
+        word, context = word_context
+        self._count_phrase(word)
+        words = context in self.contexts and self.contexts[context] or []
+        words.append(word)
+        self.contexts[context] = words
 
   def print_groups(self):
     for context, words in self.contexts.items():
@@ -70,7 +77,10 @@ class PhraseGrouper:
       for word, group in itertools.groupby(words):
         group_words.add(word)
       print('Context: {}'.format(context))
-      print('         {}'.format(', '.join(group_words)))
+      print('         {}'.format('  '.join(['"{}"'.format(x) for x in group_words])))
+
+  def get_groups(self):
+    return self.contexts.values()
 
 
 def parse_dialogs_file(path):
@@ -135,8 +145,25 @@ def main():
     for line in dialog:
       gender, text = line
       phrase_grouper.add(text)
-  phrase_grouper.print_groups()
+  # phrase_grouper.print_groups()
 
+  phrase_pair_counts = {}
+  for group in phrase_grouper.get_groups():
+    if len(group) > 10:
+      continue
+    for pair in itertools.combinations(set(group), 3):
+      pair = tuple(sorted(list(pair)))
+      previous_count = pair in phrase_pair_counts and phrase_pair_counts[pair] or 0
+      phrase_pair_counts[pair] = previous_count + 1
+
+  sorted_pairs = [
+    (pair, phrase_pair_counts[pair])
+    for pair
+    in sorted(phrase_pair_counts, key=phrase_pair_counts.get, reverse=True)
+    if phrase_pair_counts[pair] > 1
+  ]
+  for pair, count in sorted_pairs:
+    print('{} +++ {}'.format(pair, count))
 
 if __name__ == "__main__":
   """This is executed when run from the command line"""
