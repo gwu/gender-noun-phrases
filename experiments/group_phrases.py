@@ -14,6 +14,7 @@ though for now, it is just prelimnary exploratory work.
 """
 
 import argparse
+import ast
 import common
 import re
 import itertools
@@ -23,37 +24,58 @@ import nltk
 nltk.download('punkt')
 
 
-def create_context_key(phrase_size, context_size, tokens, index):
+def normalize(token, group_index):
+  if not token in group_index:
+    return token
+  return group_index[token]
+
+
+def create_context_key(phrase_size, context_size, tokens, index, group_index):
+  # TODO: Make token normalization work for multiple-word phrases.
+  # The problem now is that the group_index contains somem phrases that are
+  # multiple words, but when we normalize the contexts, we only look up
+  # individual tokens in the group index. Therefore, there may be cases where
+  # a multiple-word phrase in the context is not being normalized.
   context_list = []
   startIndex = index - context_size
   for i in range(context_size):
     if startIndex + i >= 0:
-      context_list.append(tokens[startIndex + i])
+      context_list.append(normalize(tokens[startIndex + i], group_index))
     else:
       context_list.append('###')
   context_list.append('___')
   for i in range(context_size):
     suffix_index = index + i + phrase_size
     if suffix_index < len(tokens):
-      context_list.append(tokens[suffix_index])
+      context_list.append(normalize(tokens[suffix_index], group_index))
     else:
       context_list.append('###')
   return ' '.join(context_list)
 
 
-def get_word_contexts(text, phrase_size, context_size):
+def get_word_contexts(text, phrase_size, context_size, group_index):
   tokens = nltk.word_tokenize(text)
   for i in range(len(tokens) - phrase_size + 1):
-    context_key = create_context_key(phrase_size, context_size, tokens, i)
+    context_key = create_context_key(phrase_size, context_size, tokens, i, group_index)
     yield ' '.join(tokens[i:i + phrase_size]), context_key
 
 
+def create_group_index(groups):
+  """Create an index from word to group name"""
+  index = {}
+  for group in groups:
+    for phrase in group:
+      index[phrase] = '|'.join(group)
+  return index
+
+
 class PhraseGrouper:
-  def __init__(self, phrase_size, context_size):
+  def __init__(self, phrase_size, context_size, groups):
     self.contexts = {}
     self.phrase_frequencies = {}
     self.phrase_size = phrase_size
     self.context_size = context_size
+    self.groups = create_group_index(groups or [])
 
   def _count_phrase(self, phrase):
     previous_count = phrase in self.phrase_frequencies and self.phrase_frequencies[phrase] or 0
@@ -61,7 +83,7 @@ class PhraseGrouper:
 
   def add(self, text):
     for phrase_size in range(1, self.phrase_size + 1):
-      word_contexts = get_word_contexts(text, phrase_size, self.context_size)
+      word_contexts = get_word_contexts(text, phrase_size, self.context_size, self.groups)
       for word_context in word_contexts:
         word, context = word_context
         self._count_phrase(word)
@@ -110,6 +132,27 @@ def parse_dialogs_file(path):
   return dialogs
 
 
+def parse_groups_file(path):
+  """Parse the groups.txt file from a previous iteration
+
+  Args:
+    path (str): File path for groups.txt.
+
+  Returns:
+    (list of list of str): List of word groups, each of which is a
+      list of strings that are assumed to be syntactically interchangeable.
+  """
+  groups = []
+
+  def read_line(line):
+    group, count = line.split(' +++ ', 1)
+    parsed_group = list(ast.literal_eval(group))
+    groups.append(parsed_group)
+  common.read_file_lines(path, read_line)
+
+  return groups
+
+
 def parse_command_line_args():
   """Parse command line arguments"""
   parser = argparse.ArgumentParser(
@@ -132,6 +175,10 @@ def parse_command_line_args():
     default=1,
     help='max number of words in a phrase'
   )
+  parser.add_argument(
+    '--groups',
+    help='Output of groups from a previous iteration to use when computing contexts'
+  )
   return parser.parse_args()
 
 
@@ -140,7 +187,8 @@ def main():
   args = parse_command_line_args()
 
   dialogs = parse_dialogs_file(args.dialogs)
-  phrase_grouper = PhraseGrouper(args.phrase_size, args.context_size)
+  groups = args.groups and parse_groups_file(args.groups) or None
+  phrase_grouper = PhraseGrouper(args.phrase_size, args.context_size, groups)
   for dialog in dialogs:
     for line in dialog:
       gender, text = line
