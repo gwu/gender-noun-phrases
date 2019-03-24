@@ -1,0 +1,24 @@
+plugins {
+  id 'java'
+}
+
+sourceCompatibility = '1.8'
+targetCompatibility = '1.8'
+version = '0.1.0-SNAPSHOT'
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  implementation 'edu.stanford.nlp:stanford-corenlp:3.9.2'
+  implementation 'edu.stanford.nlp:stanford-corenlp:3.9.2:models'
+  implementation 'edu.stanford.nlp:stanford-corenlp:3.9.2:models-english'
+  testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.0'
+  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.0'
+}
+
+test {
+  useJUnitPlatform()
+  maxHeapSize = '2g'
+}
